@@ -373,3 +373,27 @@ function f_the_author( $display_name ) {
 }
 
 add_filter( 'the_author', 'f_the_author', 99 );
+
+add_filter( 'wpseo_schema_graph_pieces', 'remove_author_from_schema', 11, 2 );
+
+/**
+ * Removes the breadcrumb graph pieces from the schema collector.
+ *
+ * @param array  $pieces  The current graph pieces.
+ * @param string $context The current context.
+ *
+ * @return array The remaining graph pieces.
+ */
+function remove_author_from_schema( $pieces, $context ) {
+    return \array_filter( $pieces, function( $piece ) {
+		$author_bio_display = get_post_meta(get_the_ID(), 'author-bio-display', true);
+		$authors_listing = get_post_meta(get_the_ID(), 'authors-listing', true);
+
+
+		if(!($author_bio_display == '1' || $authors_listing == '1') && $piece instanceof \Yoast\WP\SEO\Generators\Schema\Person ) {
+			return false;
+		} else {
+			return true;
+		}
+    } );
+}
