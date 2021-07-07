@@ -333,3 +333,98 @@ function video_embed_url($url) {
 
 	return $url;	
 }
+function _migrate_translations_posts_georef_do_insert($place_holders, $values) {
+
+    global $wpdb;
+
+	$query           = "INSERT INTO $wpdb->postmeta (`post_id`, `meta_key`, `meta_value` ) VALUES ";
+    $query           .= implode( ', ', $place_holders );
+    $sql             = $wpdb->prepare( "$query ", $values );
+	
+
+    if ( $wpdb->query( $sql ) ) {
+        return true;
+    } else {
+        return false;
+    }
+
+}
+
+function _migrate_translations_posts_georef() {
+	if ( $option = get_option( 'migrate_translations_posts_georef' ) ) {
+		if ( is_user_logged_in() && isset( $_GET[ 'show_migrate_translations_posts_georef'] ) ) {
+			echo '<pre>';
+			print_r( $option );
+			echo '</pre>';
+			die();	
+		}
+		return;
+	}
+	$query = new WP_Query( array(
+		'post_type' 		=> 'post',
+		'posts_per_page'	=> 99999
+		)
+	);
+	if ( ! $query->have_posts() ) {
+		return;
+	}
+	$updated_posts = array();
+	while ( $query->have_posts() ) {
+		$query->the_post();
+		global $post, $sitepress, $wpdb;
+
+		$main_post_id = get_the_ID();
+		//echo "cheguei aqui01 - post_id: $main_post_id <br>";
+		$main_post = $post;
+		$trid = $sitepress->get_element_trid($post->ID);
+		$translations = $sitepress->get_element_translations($trid);
+		//echo count( $translations );
+		//echo json_encode( $translations );
+		//die();
+		$main_post_meta_related_point = get_post_meta( $main_post_id, '_related_point', true );
+		$main_post_geocode_country = get_post_meta( $main_post_id, '_geocode_country', true );
+		//var_dump( $main_post);
+		//echo '$main_post_meta_related_point:' . json_encode( $main_post_meta_related_point ) . '<br>';
+		//echo '$main_post_geocode_country:' . json_encode( $main_post_geocode_country );
+		//echo '<br>count $translation' . json_encode( $translations ) . '<br>';
+		if ( $main_post_meta_related_point && count( $translations ) > 1 ) {
+			//echo 'cheguei aqui1<br>';
+			$meta_fields = array();
+			$meta = get_post_meta( $main_post_id );
+			foreach( $meta as $key => $value ) {
+				// check if the post meta is geocode related
+				if ( false !== stripos( $key, '_geocode') ) {
+					$meta_fields[ $key ] = $value[0];
+					//echo 'cheguei aqui2<br>'; 
+				}
+			}
+			foreach( $translations as $translation ) {
+				if ( $translation->element_id === $main_post_id ) {
+					continue;
+				}
+				//echo 'cheguei aqui3<br>';
+				$translation_post_id = $translation->element_id;
+				if ( get_post_meta( $translation_post_id, '_geocode_country', true ) ) {
+					continue;
+				}
+				//echo 'cheguei aqui4<br>';
+				$values = array();
+				$place_holders = array();
+				array_push( $values, $translation_post_id, $key, $value );
+				update_post_meta( $translation_post_id, '_related_point', $main_post_meta_related_point );
+				foreach( $meta_fields as $key => $value ) {
+					$value = maybe_serialize( $value );
+					array_push( $values, $translation_post_id, $key, $value );
+					$place_holders[] = "( %d, %s, %s )";
+				}
+				//echo 'cheguei aqui 5<br>';
+				//echo json_encode( $updated_posts );
+				//echo '<br>fim do post<br>';
+				$result = _migrate_translations_posts_georef_do_insert( $place_holders, $values );
+				$updated_posts[$translation_post_id] = get_permalink( $translation_post_id );
+			}
+		}
+	}
+	update_option( 'migrate_translations_posts_georef', $updated_posts, false );
+}
+add_action( 'wp_head', '_migrate_translations_posts_georef', 10 );
